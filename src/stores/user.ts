@@ -40,14 +40,24 @@ export const useUserStore = defineStore(
       return !tokenHasExpired();
     }
 
-    function logout() {
-      lichessFetch('/api/token', {
-        method: 'DELETE',
-      });
+    function logout(deleteRemoteToken = true) {
+      if (deleteRemoteToken) {
+        lichessFetch(
+          '/api/token',
+          {},
+          {
+            method: 'DELETE',
+          },
+        );
+      }
 
       accessToken.value = null;
       expiresAt.value = null;
       username.value = null;
+    }
+
+    function is(u: string): boolean {
+      return u.toLowerCase() === username.value?.toLowerCase();
     }
 
     return {
@@ -58,6 +68,7 @@ export const useUserStore = defineStore(
       setAccessToken,
       isLoggedIn,
       logout,
+      is,
     };
   },
   {

@@ -1,48 +1,25 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { ref } from 'vue';
+import { paths } from '@lichess-org/types';
 import { router } from '../router';
 import { LichessRound } from '../types';
 import FolderWatcher from './FolderWatcher.vue';
 import RoundTimes from './RoundTimes.vue';
-import RoundBoard from './RoundBoard.vue';
-import { add_to_queue, isSingleGamePgn, lichessFetch, openPath, recursiveFileList } from '../utils';
-import { useLogStore } from '../stores/logs';
+import { lichessFetch, openPath } from '../utils';
 import { useSettingsStore } from '../stores/settings';
-import { Switch, SwitchGroup, SwitchLabel } from '@headlessui/vue';
 
-const logs = useLogStore();
 const settings = useSettingsStore();
-const showBoard = ref(false);
 const round = ref<LichessRound | null>(null);
-
-const watchedFolder = computed<string>(() => {
-  if (!round.value) {
-    return '';
-  }
-
-  return logs.watchProcesses.get(round.value.round.id)?.folder ?? '';
-});
-
-function stopWatching() {
-  logs.watchProcesses.get(round.value!.round.id)?.unlisten();
-  logs.watchProcesses.delete(round.value!.round.id);
-}
 
 function getRound() {
   lichessFetch(`/api/broadcast/-/-/${router.currentRoute.value.params.id}`)
-    .then(response => response.json() as Promise<LichessRound>)
-    .then(data => {
-      round.value = data;
-    });
-}
-
-async function uploadExistingFilesInFolder() {
-  let files = await recursiveFileList(watchedFolder.value);
-  files = files.filter(file => isSingleGamePgn(file));
-
-  await add_to_queue(round.value!.round.id, files);
-
-  router.push('/');
+    .then(
+      response =>
+        response.json() as Promise<
+          paths['/api/broadcast/{broadcastTournamentSlug}/{broadcastRoundSlug}/{broadcastRoundId}']['get']['responses']['200']['content']['application/json']
+        >,
+    )
+    .then(data => (round.value = data));
 }
 
 getRound();
@@ -85,105 +62,21 @@ getRound();
       </div>
     </div>
 
-    <div v-if="watchedFolder">
-      <div class="border-l-8 border-green-900 bg-green-800 text-gray-50 p-4">
-        <div class="flex">
-          <div class="ml-3">
-            <p class="font-bold">This round is currently being broadcasted.</p>
-            <p>
-              Currently watching folder:
-              <a class="underline" href="" @click.prevent="openPath(watchedFolder)">{{ watchedFolder }}</a>
-            </p>
-
-            <div class="mt-4">
-              <button
-                type="button"
-                @click="stopWatching"
-                class="rounded-md bg-gray-500 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-gray-400"
-              >
-                Stop watching this folder
-              </button>
-            </div>
-
-            <div class="mt-4 pt-2 border-t-2 border-t-green-900 text-green-100 text-sm">
-              If there are already ongoing games and PGN files in this directory that you want to bulk upload, click
-              here:
-              <a class="underline" href="" @click.prevent="uploadExistingFilesInFolder"> Upload PGN now </a>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-    <div v-else class="border-gray-700 border-2 p-6 my-4">
-      <h3 class="text-white text-xl mb-2">
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke-width="1.5"
-          stroke="currentColor"
-          class="inline-block w-4 h-4"
-        >
-          <path
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"
-          />
-        </svg>
-        Upload PGN
-      </h3>
-      <p class="text-gray-300">
-        As game PGNs are written to a folder, they can be automatically be uploaded to Lichess.
-      </p>
-
-      <FolderWatcher v-if="round.study.writeable" :round-id="round.round.id" />
-      <div v-else class="mt-4 bg-yellow-50 text-yellow-800 py-4 px-4">
-        <svg class="inline h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-          <path
-            fill-rule="evenodd"
-            d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z"
-            clip-rule="evenodd"
-          />
-        </svg>
-        You do not have Contributor access to this study so you can't upload PGN.
-      </div>
+    <FolderWatcher v-if="round.study.writeable" :round="round" />
+    <div v-else class="mt-4 bg-yellow-50 text-yellow-800 py-4 px-4">
+      <svg class="inline h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+        <path
+          fill-rule="evenodd"
+          d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z"
+          clip-rule="evenodd"
+        />
+      </svg>
+      You do not have Contributor access to this study so you can't upload PGN.
     </div>
 
-    <h3 class="text-white text-xl my-4">
-      Spectator View
-      <span class="text-gray-400">({{ round.games.length }} games)</span>
-
-      <div class="float-right">
-        <SwitchGroup as="div" class="flex items-center">
-          <Switch
-            v-model="showBoard"
-            :class="[
-              showBoard ? 'bg-indigo-600' : 'bg-gray-200',
-              'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:ring-offset-2',
-            ]"
-          >
-            <span
-              aria-hidden="true"
-              :class="[
-                showBoard ? 'translate-x-5' : 'translate-x-0',
-                'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
-              ]"
-            />
-          </Switch>
-          <SwitchLabel as="span" class="ml-3 text-sm">
-            <span class="font-medium text-gray-400">Show boards</span>
-          </SwitchLabel>
-        </SwitchGroup>
-      </div>
-    </h3>
-    <div class="grid grid-cols-1 gap-2 sm:grid-cols-3">
-      <RoundBoard
-        v-for="(game, index) in round.games"
-        v-model="round.games[index]"
-        :showBoard="showBoard"
-        :roundURL="round.round.url"
-        :key="game.id"
-      ></RoundBoard>
-    </div>
+    <iframe
+      :src="settings.lichessUrl + '/embed/broadcast/_/_/' + round.round.id + '?evals=0'"
+      class="w-full aspect-[4/3] border-0 pb-4"
+    ></iframe>
   </template>
 </template>

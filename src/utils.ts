@@ -6,23 +6,22 @@ import { useUserStore } from './stores/user';
 import { useSystemStore } from './stores/system';
 import { BroadcastPgnPushTags } from './types';
 
-export async function lichessFetch(path: string, options?: object, timeoutMs = 5_000): Promise<Response> {
+export async function lichessFetch(
+  path: string,
+  params?: Record<string, string>,
+  options?: RequestInit,
+): Promise<Response> {
   const settings = useSettingsStore();
   const user = useUserStore();
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-
-  const url = `${settings.lichessUrl}${path}`;
+  const url = `${settings.lichessUrl}${path}?${new URLSearchParams(params)}`;
   return fetch(url, {
     headers: new Headers({
       Authorization: `Bearer ${user.accessToken?.access_token}`,
     }),
-    signal: controller.signal,
     ...options,
   })
     .then(response => {
-      clearTimeout(timeout);
       if (!response.ok) handleFetchError(url, response);
       return response;
     })
@@ -34,13 +33,13 @@ export async function lichessFetch(path: string, options?: object, timeoutMs = 5
 }
 
 function handleFetchError(url: string, response: Response) {
-  const logs = useLogStore();
-
-  logs.error(
-    response.status === 401
-      ? 'Error: Invalid/expired session. Please log out of this app on the Settings page and then log back in.'
-      : `Error: ${response.status} ${response.statusText} - ${url}`,
-  );
+  if (response.status === 401) {
+    const user = useUserStore();
+    user.logout(false);
+  } else {
+    const logs = useLogStore();
+    logs.error(`Error: ${response.status} ${response.statusText} - ${url}`);
+  }
 
   throw new Error(`${response.status} ${response.statusText}`);
 }
@@ -97,8 +96,7 @@ if (import.meta.vitest) {
   const { it, expect, vi } = import.meta.vitest;
 
   it('shows relative time', () => {
-    const now = new Date(2000, 1, 1);
-    vi.setSystemTime(now);
+    vi.setSystemTime(new Date(2000, 1, 1));
 
     expect(relativeTimeDisplay(new Date(2000, 1, 1, 0, 0, 1).getTime())).toBe('in 1 second');
     expect(relativeTimeDisplay(new Date(2000, 1, 1, 0, 0, 2).getTime())).toBe('in 2 seconds');
@@ -148,21 +146,51 @@ if (import.meta.vitest) {
   });
 }
 
-/**
- * Ignore the "games.pgn" file which is a multi-game pgn file.
- * We only want to upload single game pgn files (game-1.pgn, game-2.pgn, etc.)
- */
 export function isSingleGamePgn(path: string): boolean {
   return path.endsWith('.pgn') && !path.endsWith('games.pgn');
 }
 
-if (import.meta.vitest) {
-  const { it, expect } = import.meta.vitest;
+export function isMultiGamePgn(path: string): boolean {
+  return path.endsWith('games.pgn');
+}
 
-  it('filters pgn files', () => {
+/**
+ * Determine which files to upload.
+ * If there is a `games.pgn` file, upload only that.
+ * Otherwise, upload the individual game PGNs.
+ */
+export function multiOrSingleFilter(files: string[]): string[] {
+  const multiGamePgn = files.find(isMultiGamePgn);
+  if (multiGamePgn) {
+    return [multiGamePgn];
+  }
+
+  return files.filter(isSingleGamePgn);
+}
+
+if (import.meta.vitest) {
+  const { it, expect, describe } = import.meta.vitest;
+  it('finds pgn files', () => {
     expect(isSingleGamePgn('path/to/game-1.pgn')).toBe(true);
+    expect(isMultiGamePgn('path/to/game-1.pgn')).toBe(false);
+
     expect(isSingleGamePgn('path/to/games.pgn')).toBe(false);
+    expect(isMultiGamePgn('path/to/games.pgn')).toBe(true);
+
     expect(isSingleGamePgn('path/to/index.json')).toBe(false);
+    expect(isMultiGamePgn('path/to/index.json')).toBe(false);
+  });
+
+  describe('multiOrSingleFilter', () => {
+    it('only includes games.pgn', () => {
+      const files = ['game-1.pgn', 'game-2.pgn', 'games.pgn'];
+      expect(multiOrSingleFilter(files)).toEqual(['games.pgn']);
+    });
+
+    it('includes all individual games', () => {
+      const files = ['game-1.pgn', 'game-2.pgn', 'game-3.pgn'];
+      expect(multiOrSingleFilter(files)).toEqual(['game-1.pgn', 'game-2.pgn', 'game-3.pgn']);
+    });
   });
 }
 
@@ -211,12 +239,12 @@ if (import.meta.vitest) {
   const { it, expect } = import.meta.vitest;
 
   it('returns a PGN name', () => {
-    let tags: BroadcastPgnPushTags = { White: 'Magnus Carlsen' };
+    const tags: BroadcastPgnPushTags = { White: 'Magnus Carlsen' };
     expect(pgnTag('White', tags)).toBe('Magnus Carlsen');
   });
 
   it('returns a PGN tag', () => {
-    let tags: BroadcastPgnPushTags = { A: '1', B: '2', C: '3' };
+    const tags: BroadcastPgnPushTags = { A: '1', B: '2', C: '3' };
     expect(pgnTag('B', tags)).toBe('2');
     expect(pgnTag('D', tags)).toBeUndefined();
   });
